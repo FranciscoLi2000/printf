@@ -1,288 +1,139 @@
 # ft_printf
 
 > A from-scratch reimplementation of the C standard `printf`, built as part of the 42 school curriculum.
+>
+> C 标准库 `printf` 的从零实现，作为 42 学校课程项目完成。
+>
+> Reimplementación desde cero de `printf` de la biblioteca estándar de C, creada como parte del currículo de 42.
 
 ---
 
-## Table of Contents
+## Language / 语言 / Idioma
 
-- [Overview](#overview)
-- [How `printf` Works — The Logical Idea](#how-printf-works--the-logical-idea)
-- [Implementation from Zero](#implementation-from-zero)
-  - [Step 1 — Variadic Functions](#step-1--variadic-functions)
-  - [Step 2 — Format String Parsing](#step-2--format-string-parsing)
-  - [Step 3 — Type Dispatch and Conversion](#step-3--type-dispatch-and-conversion)
-  - [Step 4 — Writing Output and Counting Bytes](#step-4--writing-output-and-counting-bytes)
-  - [Step 5 — Bonus: Flags, Width, and Precision](#step-5--bonus-flags-width-and-precision)
-- [Project Structure](#project-structure)
-- [Supported Conversions](#supported-conversions)
-  - [Mandatory](#mandatory)
-  - [Bonus Flags](#bonus-flags)
-- [Architecture and Design Decisions](#architecture-and-design-decisions)
-- [Building](#building)
-- [Usage](#usage)
-- [Testing](#testing)
+- [English](#english)
+- [中文（普通话）](#中文普通话)
+- [Español](#español)
 
 ---
 
-## Overview
+## English
 
-`ft_printf` is a reimplementation of the standard C library function `printf(3)`. It outputs a formatted string to standard output and returns the total number of characters written, exactly as the original does.
+### Table of Contents
 
-The goals of this project are:
+- [Overview](#overview-en)
+- [How `printf` Works](#how-printf-works-en)
+- [Implementation from Zero](#implementation-from-zero-en)
+- [Project Structure](#project-structure-en)
+- [Supported Conversions](#supported-conversions-en)
+- [Architecture and Design Decisions](#architecture-and-design-decisions-en)
+- [Building](#building-en)
+- [Usage](#usage-en)
+- [Testing](#testing-en)
+- [License](#license-en)
 
-- Understand **variadic functions** (`stdarg.h`) in C.
-- Learn how to **parse a format string** character by character.
-- Practice writing **modular, maintainable C code** split across multiple source files.
-- Produce a **static library** (`libftprintf.a`) that can be linked into any project.
+### Overview {#overview-en}
 
----
+`ft_printf` is a reimplementation of `printf(3)`. It writes formatted output to standard output and returns the total number of characters written.
 
-## How `printf` Works — The Logical Idea
+Main goals:
 
-At its core, `printf` takes a **format string** and a variable number of arguments:
+- Learn **variadic functions** (`stdarg.h`).
+- Parse a format string character by character.
+- Build modular, maintainable C code.
+- Deliver a static library: `libftprintf.a`.
 
-```c
-printf("Hello, %s! You are %d years old.\n", name, age);
-```
+### How `printf` Works {#how-printf-works-en}
 
-The function walks through the format string one character at a time:
+`printf` reads a format string from left to right:
 
-1. **Ordinary character** → write it directly to stdout.
-2. **`%` character** → a conversion specification begins. Read what follows to determine:
-   - Optional **flags** (`-`, `0`, `#`, ` `)
-   - Optional **minimum field width** (e.g., `10`)
-   - Optional **precision** (e.g., `.5`)
-   - A **conversion specifier** (`c`, `s`, `d`, `x`, `p`, …)
+1. Normal character → write directly.
+2. `%` → parse format specification (specifier, and in bonus: flags/width/precision), fetch one variadic argument, format it, and write it.
 
-   Then fetch the next variadic argument, format it according to the specification, and write the result.
+### Implementation from Zero {#implementation-from-zero-en}
 
-This simple contract — *walk the string, act on `%`* — is the entire logical idea behind `printf`.
+1. **Variadic handling**: `va_start`, `va_arg`, `va_end`.
+2. **Parsing**: detect `%` and parse specifier (plus flags/width/precision in bonus).
+3. **Dispatch**: route to handlers for `%c`, `%s`, `%d`, `%i`, `%u`, `%x`, `%X`, `%p`, `%%`.
+4. **Output counting**: write with `write(2)` and increment a shared counter.
+5. **Bonus formatting**: apply `-`, `0`, `#`, space, width, precision via a `t_format` struct and shared numeric formatting path.
 
----
+### Project Structure {#project-structure-en}
 
-## Implementation from Zero
-
-### Step 1 — Variadic Functions
-
-C does not intrinsically know how many arguments a function receives beyond those declared in its prototype. The `<stdarg.h>` header provides three macros to iterate over the extra arguments safely:
-
-| Macro | Purpose |
-|---|---|
-| `va_start(args, last)` | Initialize the `va_list`, anchored after the last named parameter. |
-| `va_arg(args, type)` | Fetch the next argument, cast to `type`. |
-| `va_end(args)` | Clean up the `va_list`. |
-
-```c
-int ft_printf(const char *format, ...)
-{
-    va_list args;
-    int     count;
-
-    count = 0;
-    va_start(args, format);   // initialize after 'format'
-    // ... parse and dispatch ...
-    va_end(args);
-    return (count);
-}
-```
-
-**Important:** Every call to `va_start` must be paired with `va_end`. Forgetting `va_end` is undefined behavior on some ABIs.
-
----
-
-### Step 2 — Format String Parsing
-
-The parsing loop iterates over every byte of `format`:
-
-```
-while (*fmt)
-    if current char == '%'
-        read flags / width / precision / specifier
-        dispatch to the right converter
-    else
-        write current char as-is
-```
-
-For the **mandatory** part, the only tokens needed after `%` are the single conversion letter. For the **bonus** part, the parser must also handle flags, width, and precision — so it becomes a small state machine:
-
-```
-% → [flags]* → [width]? → ['.' precision]? → specifier
-```
-
-This is implemented in `bonus/ft_printf_parse_bonus.c` using three focused helper functions (`ft_parse_flags`, `ft_parse_width`, `ft_parse_prec`), each advancing the format pointer before handing off to the next stage.
-
----
-
-### Step 3 — Type Dispatch and Conversion
-
-Once the specifier is known, a dispatcher function selects the correct handler:
-
-```c
-if      (spec == 'c') → print a character
-else if (spec == 's') → print a string
-else if (spec == 'd' || spec == 'i') → print a signed integer
-else if (spec == 'u') → print an unsigned integer
-else if (spec == 'x') → print hex lowercase
-else if (spec == 'X') → print hex uppercase
-else if (spec == 'p') → print a pointer address
-else if (spec == '%') → print a literal '%'
-```
-
-Each handler fetches its argument via `va_arg` with the **correct type** — this is critical, because passing the wrong type to `va_arg` is undefined behavior.
-
-Key conversion helpers:
-
-- **Integers** (`ft_putnbr`): handle `INT_MIN` safely by casting to `unsigned long` before negating.
-- **Hex / unsigned** (`ft_putunbr`): a single recursive function parameterised by base (10 or 16) and case flag covers `%u`, `%x`, and `%X`.
-- **Pointers** (`ft_putptr`): cast `void *` to `unsigned long`, emit the `0x` prefix, then recurse into the hex printer. A `NULL` pointer prints `(nil)`.
-
----
-
-### Step 4 — Writing Output and Counting Bytes
-
-Rather than building the output in a heap-allocated buffer (which requires `malloc`/`free`), every character is written **immediately** to file descriptor 1 via the `write(2)` syscall. A pointer to an integer counter is threaded through all functions:
-
-```c
-void ft_putchar_count(char c, int *count)
-{
-    write(1, &c, 1);
-    (*count)++;
-}
-```
-
-Threading `count` as a pointer avoids global state and keeps the code thread-friendly. The final value of `count` is returned by `ft_printf` as the total number of bytes written.
-
----
-
-### Step 5 — Bonus: Flags, Width, and Precision
-
-The bonus part stores all modifiers in a struct before converting:
-
-```c
-typedef struct s_format
-{
-    int  left_align;   // '-' flag
-    int  zero_pad;     // '0' flag
-    int  hash;         // '#' flag
-    int  space;        // ' ' flag
-    int  width;        // minimum field width
-    int  precision;    // -1 means "not set"
-    char specifier;    // the conversion letter
-}   t_format;
-```
-
-A generic `ft_print_num` function in `ft_printf_utils_bonus.c` applies all numeric formatting rules in one place:
-
-1. Compute `prec_zeros`: extra leading zeros demanded by `.precision`.
-2. Compute `wpad`: space padding demanded by `width`.
-3. If right-aligned (`-` absent): emit space padding → prefix → zero padding → digits.
-4. If left-aligned (`-` present): emit prefix → zero padding → digits → space padding.
-
-Isolating this logic in one function means `%d`, `%u`, `%x`, `%X`, and `%p` all share the same padding path with no duplication.
-
----
-
-## Project Structure
-
-```
+```text
 .
 ├── Makefile
 ├── includes/
-│   ├── ft_printf.h           # Mandatory prototypes
-│   └── ft_printf_bonus.h     # Bonus prototypes + t_format struct
-├── src/                      # Mandatory sources
-│   ├── ft_printf.c           # Entry point, format loop, dispatcher
-│   ├── ft_printf_chars.c     # %c and %s handlers
-│   ├── ft_printf_nbr.c       # %d/%i handler
-│   └── ft_printf_hex.c       # %u, %x, %X, %p handlers
-├── bonus/                    # Bonus sources (flags / width / precision)
-│   ├── ft_printf_bonus.c     # Entry point, format loop, dispatcher
-│   ├── ft_printf_parse_bonus.c  # Format spec parser
-│   ├── ft_printf_utils_bonus.c  # Padding, number-to-string, ft_print_num
-│   ├── ft_printf_chars_bonus.c  # %c and %s with width/precision
-│   ├── ft_printf_nbr_bonus.c    # %d/%i with all flags
-│   └── ft_printf_hex_bonus.c    # %u, %x, %X, %p with all flags
+│   ├── ft_printf.h
+│   └── ft_printf_bonus.h
+├── src/
+│   ├── ft_printf.c
+│   ├── ft_printf_chars.c
+│   ├── ft_printf_nbr.c
+│   └── ft_printf_hex.c
+├── bonus/
+│   ├── ft_printf_bonus.c
+│   ├── ft_printf_parse_bonus.c
+│   ├── ft_printf_utils_bonus.c
+│   ├── ft_printf_chars_bonus.c
+│   ├── ft_printf_nbr_bonus.c
+│   └── ft_printf_hex_bonus.c
 └── tests/
-    └── main.c                # Manual test harness
+    └── main.c
 ```
 
----
+### Supported Conversions {#supported-conversions-en}
 
-## Supported Conversions
-
-### Mandatory
+#### Mandatory
 
 | Specifier | Argument type | Output |
 |---|---|---|
 | `%c` | `int` (char) | Single character |
-| `%s` | `char *` | Null-terminated string (`(null)` if pointer is NULL) |
-| `%d` / `%i` | `int` | Signed decimal integer |
-| `%u` | `unsigned int` | Unsigned decimal integer |
+| `%s` | `char *` | String (`(null)` if NULL) |
+| `%d` / `%i` | `int` | Signed decimal |
+| `%u` | `unsigned int` | Unsigned decimal |
 | `%x` | `unsigned int` | Lowercase hexadecimal |
 | `%X` | `unsigned int` | Uppercase hexadecimal |
-| `%p` | `void *` | Pointer address as `0x…` (`(nil)` if NULL) |
+| `%p` | `void *` | Pointer as `0x...` (`(nil)` if NULL) |
 | `%%` | — | Literal `%` |
 
-### Bonus Flags
+#### Bonus flags
 
 | Flag / Field | Syntax | Effect |
 |---|---|---|
-| Left-align | `%-10d` | Pad with spaces on the right instead of the left |
-| Zero-pad | `%010d` | Pad with `0` instead of spaces (ignored when `-` is set or precision is given) |
-| Alternate form | `%#x` | Prepend `0x` / `0X` for non-zero hex values |
-| Space prefix | `% d` | Prepend a space before positive numbers |
+| Left-align | `%-10d` | Pad spaces on the right |
+| Zero-pad | `%010d` | Pad with `0` (if valid) |
+| Alternate form | `%#x` | Prefix `0x` / `0X` for non-zero hex |
+| Space prefix | `% d` | Leading space for positive numbers |
 | Width | `%10s` | Minimum field width |
-| Precision | `%.5s` / `%.3d` | Max string length / minimum digit count |
+| Precision | `%.5s` / `%.3d` | Max string len / min digits |
 
----
+### Architecture and Design Decisions {#architecture-and-design-decisions-en}
 
-## Architecture and Design Decisions
+- Static library output: `libftprintf.a`.
+- Direct `write(2)` path (no `malloc` in output path).
+- `unsigned long` used for pointer and wide unsigned arithmetic safety.
+- Mandatory and bonus kept in separate directories.
+- Bonus parsing state kept in `t_format`.
+- Shared numeric formatting logic avoids duplication.
+- Compiled with `-Wall -Wextra -Werror`.
 
-| Decision | Rationale |
-|---|---|
-| **Static library (`libftprintf.a`)** | Allows the library to be linked into any project without distributing a shared object. |
-| **No `malloc` in the output path** | Avoids allocation failures mid-format and simplifies cleanup — all output goes directly to `write(2)`. |
-| **`unsigned long` for all pointer and large-unsigned arithmetic** | Avoids undefined behavior when negating `INT_MIN` and when casting pointer values for hex printing. |
-| **Separate mandatory / bonus directories** | Keeps the mandatory submission clean; the Makefile builds one or the other cleanly. |
-| **`t_format` struct for bonus** | Encapsulates all format modifiers in one place, eliminating long parameter lists and making the dispatch logic easy to read. |
-| **Single `ft_print_num` helper** | All numeric specifiers share one padding/prefix routine, ensuring consistent behaviour and a single point of maintenance. |
-| **`-Wall -Wextra -Werror`** | Any warning is treated as an error, enforcing clean code at compile time. |
-
----
-
-## Building
+### Building {#building-en}
 
 ```bash
-# Build mandatory library
-make
-
-# Build bonus library (flags, width, precision)
-make bonus
-
-# Remove object files
-make clean
-
-# Remove object files and library
-make fclean
-
-# Full rebuild
-make re
+make         # mandatory library
+make bonus   # bonus library
+make clean   # remove object files
+make fclean  # remove object files + library
+make re      # full rebuild
 ```
 
-The output is `libftprintf.a` in the project root.
+Output: `libftprintf.a`.
 
----
-
-## Usage
-
-Link the library against your program:
+### Usage {#usage-en}
 
 ```bash
 cc -Wall -Wextra -Werror -I./includes main.c -L. -lftprintf -o my_program
 ```
-
-Include the header:
 
 ```c
 #include "ft_printf.h"
@@ -297,22 +148,312 @@ int main(void)
 }
 ```
 
----
-
-## Testing
-
-A minimal test harness is provided:
+### Testing {#testing-en}
 
 ```bash
-make test        # build with mandatory library
-make test_bonus  # build with bonus library
+make test
+make test_bonus
 ./test_printf
 ```
 
-For rigorous comparison against the system `printf`, pipe both outputs through `diff` or use a dedicated tester such as [pft](https://github.com/gavinfielder/pft) or [printf-unit-test](https://github.com/Tripouille/printfTester).
+For strict comparison with system `printf`, compare outputs using `diff` or external testers such as `pft` / `printfTester`.
+
+### License {#license-en}
+
+MIT License. See [LICENSE](LICENSE).
 
 ---
 
-## License
+## 中文（普通话）
 
-This project is released under the [MIT License](LICENSE).
+### 目录
+
+- [概览](#概览-zh)
+- [`printf` 的工作原理](#printf-的工作原理-zh)
+- [从零实现思路](#从零实现思路-zh)
+- [项目结构](#项目结构-zh)
+- [支持的转换说明符](#支持的转换说明符-zh)
+- [架构与设计决策](#架构与设计决策-zh)
+- [构建](#构建-zh)
+- [使用](#使用-zh)
+- [测试](#测试-zh)
+- [许可证](#许可证-zh)
+
+### 概览 {#概览-zh}
+
+`ft_printf` 是对标准库 `printf(3)` 的重写。它将格式化后的内容输出到标准输出，并返回写入的总字符数。
+
+主要目标：
+
+- 学习 **可变参数函数**（`stdarg.h`）。
+- 学习逐字符解析格式字符串。
+- 练习模块化、可维护的 C 代码组织。
+- 产出静态库 `libftprintf.a`。
+
+### `printf` 的工作原理 {#printf-的工作原理-zh}
+
+`printf` 从左到右扫描格式字符串：
+
+1. 普通字符：直接输出。
+2. 遇到 `%`：开始解析格式（基础部分只需说明符，bonus 还包含 flag/width/precision），读取下一个参数并按规则格式化后输出。
+
+### 从零实现思路 {#从零实现思路-zh}
+
+1. **可变参数处理**：`va_start`、`va_arg`、`va_end`。
+2. **解析器**：识别 `%` 并解析说明符（bonus 还需解析 flag/宽度/精度）。
+3. **分发层**：按说明符调用对应处理函数（`%c`、`%s`、`%d`、`%i`、`%u`、`%x`、`%X`、`%p`、`%%`）。
+4. **输出计数**：通过 `write(2)` 立即输出，并统一累加字符计数。
+5. **bonus 格式化**：使用 `t_format` 保存解析结果，统一应用 `-`、`0`、`#`、空格、宽度、精度规则。
+
+### 项目结构 {#项目结构-zh}
+
+```text
+.
+├── Makefile
+├── includes/
+│   ├── ft_printf.h
+│   └── ft_printf_bonus.h
+├── src/
+│   ├── ft_printf.c
+│   ├── ft_printf_chars.c
+│   ├── ft_printf_nbr.c
+│   └── ft_printf_hex.c
+├── bonus/
+│   ├── ft_printf_bonus.c
+│   ├── ft_printf_parse_bonus.c
+│   ├── ft_printf_utils_bonus.c
+│   ├── ft_printf_chars_bonus.c
+│   ├── ft_printf_nbr_bonus.c
+│   └── ft_printf_hex_bonus.c
+└── tests/
+    └── main.c
+```
+
+### 支持的转换说明符 {#支持的转换说明符-zh}
+
+#### 基础（Mandatory）
+
+| 说明符 | 参数类型 | 输出 |
+|---|---|---|
+| `%c` | `int`（字符） | 单个字符 |
+| `%s` | `char *` | 字符串（NULL 时输出 `(null)`） |
+| `%d` / `%i` | `int` | 有符号十进制 |
+| `%u` | `unsigned int` | 无符号十进制 |
+| `%x` | `unsigned int` | 小写十六进制 |
+| `%X` | `unsigned int` | 大写十六进制 |
+| `%p` | `void *` | 指针地址 `0x...`（NULL 时 `(nil)`） |
+| `%%` | — | 字面量 `%` |
+
+#### Bonus 标志
+
+| 标志 / 字段 | 示例 | 作用 |
+|---|---|---|
+| 左对齐 | `%-10d` | 右侧补空格 |
+| 零填充 | `%010d` | 用 `0` 填充（满足规则时生效） |
+| 替代形式 | `%#x` | 非零十六进制前缀 `0x` / `0X` |
+| 空格前缀 | `% d` | 正数前补一个空格 |
+| 宽度 | `%10s` | 最小字段宽度 |
+| 精度 | `%.5s` / `%.3d` | 字符串最大长度 / 数字最小位数 |
+
+### 架构与设计决策 {#架构与设计决策-zh}
+
+- 输出为静态库 `libftprintf.a`。
+- 输出路径不使用 `malloc`，直接 `write(2)`。
+- 指针与较大无符号运算统一使用 `unsigned long`。
+- mandatory 与 bonus 目录分离，职责清晰。
+- bonus 通过 `t_format` 聚合格式信息。
+- 数字格式化路径复用，减少重复逻辑。
+- 编译参数为 `-Wall -Wextra -Werror`。
+
+### 构建 {#构建-zh}
+
+```bash
+make         # 构建 mandatory
+make bonus   # 构建 bonus
+make clean   # 删除目标文件
+make fclean  # 删除目标文件和库
+make re      # 全量重建
+```
+
+产物：`libftprintf.a`。
+
+### 使用 {#使用-zh}
+
+```bash
+cc -Wall -Wextra -Werror -I./includes main.c -L. -lftprintf -o my_program
+```
+
+```c
+#include "ft_printf.h"
+
+int main(void)
+{
+    int n;
+
+    n = ft_printf("%-10s | %05d | %#010x\n", "hello", 42, 255);
+    ft_printf("Total chars written: %d\n", n);
+    return (0);
+}
+```
+
+### 测试 {#测试-zh}
+
+```bash
+make test
+make test_bonus
+./test_printf
+```
+
+如需严格对比系统 `printf`，可将输出通过 `diff` 比较，或使用 `pft` / `printfTester` 等测试器。
+
+### 许可证 {#许可证-zh}
+
+MIT 许可证，详见 [LICENSE](LICENSE)。
+
+---
+
+## Español
+
+### Índice
+
+- [Resumen](#resumen-es)
+- [Cómo funciona `printf`](#cómo-funciona-printf-es)
+- [Implementación desde cero](#implementación-desde-cero-es)
+- [Estructura del proyecto](#estructura-del-proyecto-es)
+- [Conversiones soportadas](#conversiones-soportadas-es)
+- [Arquitectura y decisiones de diseño](#arquitectura-y-decisiones-de-diseño-es)
+- [Compilación](#compilación-es)
+- [Uso](#uso-es)
+- [Pruebas](#pruebas-es)
+- [Licencia](#licencia-es)
+
+### Resumen {#resumen-es}
+
+`ft_printf` es una reimplementación de `printf(3)`. Escribe salida formateada en stdout y devuelve el número total de caracteres escritos.
+
+Objetivos principales:
+
+- Entender **funciones variádicas** (`stdarg.h`).
+- Aprender a parsear una cadena de formato carácter por carácter.
+- Escribir C modular y mantenible.
+- Generar una biblioteca estática: `libftprintf.a`.
+
+### Cómo funciona `printf` {#cómo-funciona-printf-es}
+
+`printf` recorre la cadena de formato de izquierda a derecha:
+
+1. Carácter normal → se escribe directamente.
+2. `%` → empieza una especificación de formato (en bonus: flags/ancho/precisión), se toma el siguiente argumento variádico, se formatea y se escribe.
+
+### Implementación desde cero {#implementación-desde-cero-es}
+
+1. **Variádicas**: `va_start`, `va_arg`, `va_end`.
+2. **Parser**: detectar `%` y leer especificadores (más flags/ancho/precisión en bonus).
+3. **Despacho**: elegir handler según `%c`, `%s`, `%d`, `%i`, `%u`, `%x`, `%X`, `%p`, `%%`.
+4. **Conteo de salida**: escribir con `write(2)` y acumular el contador compartido.
+5. **Bonus**: guardar metadatos en `t_format` y aplicar reglas de padding/formato de forma uniforme.
+
+### Estructura del proyecto {#estructura-del-proyecto-es}
+
+```text
+.
+├── Makefile
+├── includes/
+│   ├── ft_printf.h
+│   └── ft_printf_bonus.h
+├── src/
+│   ├── ft_printf.c
+│   ├── ft_printf_chars.c
+│   ├── ft_printf_nbr.c
+│   └── ft_printf_hex.c
+├── bonus/
+│   ├── ft_printf_bonus.c
+│   ├── ft_printf_parse_bonus.c
+│   ├── ft_printf_utils_bonus.c
+│   ├── ft_printf_chars_bonus.c
+│   ├── ft_printf_nbr_bonus.c
+│   └── ft_printf_hex_bonus.c
+└── tests/
+    └── main.c
+```
+
+### Conversiones soportadas {#conversiones-soportadas-es}
+
+#### Mandatory
+
+| Especificador | Tipo de argumento | Salida |
+|---|---|---|
+| `%c` | `int` (char) | Carácter único |
+| `%s` | `char *` | Cadena (`(null)` si es NULL) |
+| `%d` / `%i` | `int` | Entero decimal con signo |
+| `%u` | `unsigned int` | Entero decimal sin signo |
+| `%x` | `unsigned int` | Hexadecimal en minúsculas |
+| `%X` | `unsigned int` | Hexadecimal en mayúsculas |
+| `%p` | `void *` | Dirección `0x...` (`(nil)` si es NULL) |
+| `%%` | — | `%` literal |
+
+#### Flags bonus
+
+| Flag / Campo | Sintaxis | Efecto |
+|---|---|---|
+| Alineación izquierda | `%-10d` | Espacios a la derecha |
+| Relleno con ceros | `%010d` | Relleno con `0` (si aplica) |
+| Forma alternativa | `%#x` | Prefijo `0x` / `0X` para hex no cero |
+| Prefijo espacio | `% d` | Espacio inicial en positivos |
+| Ancho | `%10s` | Ancho mínimo de campo |
+| Precisión | `%.5s` / `%.3d` | Máx. longitud / mín. dígitos |
+
+### Arquitectura y decisiones de diseño {#arquitectura-y-decisiones-de-diseño-es}
+
+- Biblioteca estática de salida: `libftprintf.a`.
+- Ruta de salida directa con `write(2)` (sin `malloc` en esa ruta).
+- Uso de `unsigned long` para punteros y aritmética grande sin signo.
+- Separación clara entre mandatory y bonus.
+- Estado de formato bonus agrupado en `t_format`.
+- Lógica numérica compartida para evitar duplicación.
+- Compilación estricta con `-Wall -Wextra -Werror`.
+
+### Compilación {#compilación-es}
+
+```bash
+make         # biblioteca mandatory
+make bonus   # biblioteca bonus
+make clean   # limpia objetos
+make fclean  # limpia objetos + biblioteca
+make re      # recompilación completa
+```
+
+Salida: `libftprintf.a`.
+
+### Uso {#uso-es}
+
+```bash
+cc -Wall -Wextra -Werror -I./includes main.c -L. -lftprintf -o my_program
+```
+
+```c
+#include "ft_printf.h"
+
+int main(void)
+{
+    int n;
+
+    n = ft_printf("%-10s | %05d | %#010x\n", "hello", 42, 255);
+    ft_printf("Total chars written: %d\n", n);
+    return (0);
+}
+```
+
+### Pruebas {#pruebas-es}
+
+```bash
+make test
+make test_bonus
+./test_printf
+```
+
+Para comparar estrictamente con `printf` del sistema, usa `diff` sobre ambas salidas o testers externos como `pft` / `printfTester`.
+
+### Licencia {#licencia-es}
+
+Licencia MIT. Ver [LICENSE](LICENSE).
