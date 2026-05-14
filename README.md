@@ -1,4 +1,4 @@
-# printf
+# printf (ft_printf)
 
 ![Language](https://img.shields.io/badge/language-C-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
@@ -16,7 +16,7 @@ A from-scratch reimplementation of the C standard `printf` function, delivered a
 
 ## Project Introduction
 
-`printf` is a learning-focused implementation of `printf(3)`. It parses format strings, handles variadic arguments, and writes formatted output to standard output while returning the number of characters written. The project ships as a static library `libftprintf.a` and includes a bonus implementation with flags, width, and precision handling.
+`printf` is a learning-focused implementation of `printf(3)` (often referred to as `ft_printf`). It parses format strings, handles variadic arguments, and writes formatted output to standard output while returning the number of characters written. The project ships as a static library `libftprintf.a` and includes a bonus implementation with flags, width, and precision handling.
 
 ## Tech Stack
 
@@ -74,6 +74,13 @@ To build the test binary:
 
 ```bash
 make test
+./test_printf
+```
+
+To build and run the bonus test binary:
+
+```bash
+make test_bonus
 ./test_printf
 ```
 
